@@ -2,7 +2,94 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
+#include <string>
 #include <regex>
+
+static void trimWhitespaceBeforeEscapedNewline(std::string& s) {
+	std::string result;
+	result.reserve(s.size());
+	size_t i = 0;
+	while (i < s.size()) {
+		if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') {
+			while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == '\t')) {
+				result.pop_back();
+			}
+			result.push_back('\\');
+			result.push_back('n');
+			i += 2;
+		} else {
+			result.push_back(s[i]);
+			++i;
+		}
+	}
+	s.swap(result);
+}
+
+static void removeTrailingCommaBeforeClosingBrace(std::string& s) {
+	std::string result;
+	result.reserve(s.size());
+	size_t i = 0;
+	while (i < s.size()) {
+		if (s[i] == '}') {
+			while (!result.empty() && result.back() == ' ') {
+				result.pop_back();
+			}
+			if (!result.empty() && result.back() == ',') {
+				result.pop_back();
+			}
+			result.push_back('}');
+			++i;
+		} else {
+			result.push_back(s[i]);
+			++i;
+		}
+	}
+	s.swap(result);
+}
+
+static void addCommaBetweenBracketAndQuote(std::string& s) {
+	std::string result;
+	result.reserve(s.size());
+	size_t i = 0;
+	while (i < s.size()) {
+		if (s[i] == '"') {
+			size_t j = result.size();
+			while (j > 0 && (result[j - 1] == ' ' || result[j - 1] == '\n' || result[j - 1] == '\r' || result[j - 1] == '\t' || result[j - 1] == '\f' || result[j - 1] == '\v')) {
+				--j;
+			}
+			if (j > 0 && result[j - 1] == ']') {
+				result.erase(j);
+				result.push_back(',');
+			}
+			result.push_back('"');
+			++i;
+		} else {
+			result.push_back(s[i]);
+			++i;
+		}
+	}
+	s.swap(result);
+}
+
+static void removeExtraCommasAfterBracket(std::string& s) {
+	size_t pos = 0;
+	while ((pos = s.find("],,", pos)) != std::string::npos) {
+		size_t next = pos + 2;
+		while (next < s.size() && s[next] == ',') {
+			s.erase(pos + 1, 1);
+		}
+	}
+}
+
+// 替换 regex_replace 原先的方法会导致stack overflow
+// 新方法可直接处理Megamix2，效率鉴定为通过xD
+void preprocessLevelJson(std::string& jsonString) {
+	trimWhitespaceBeforeEscapedNewline(jsonString);
+	removeTrailingCommaBeforeClosingBrace(jsonString);
+	addCommaBetweenBracketAndQuote(jsonString);
+	removeExtraCommasAfterBracket(jsonString);
+}
 
 // 发卡弯bug: 三球时发卡弯上的暂停节拍事件比实际暂停少1拍
 void sb7bg(double& duration) {
@@ -31,10 +118,17 @@ namespace ReADOFAIMacro {
 		std::stringstream buffer;
 		buffer << file.rdbuf();
 		std::string jsonString = buffer.str();
-		jsonString = std::regex_replace(jsonString, std::regex("[\n\r\t]*\\\\n"),"\\n");
-		jsonString = std::regex_replace(jsonString, std::regex(", *}"),"}");
-		jsonString = std::regex_replace(jsonString, std::regex("\\][\n\t\r\f\v]*\""),"],\"");
-		nlohmann::json json = nlohmann::json::parse(jsonString);
+		std::cout << "Parsing...\n";
+		preprocessLevelJson(jsonString);
+		nlohmann::json json;
+		try {
+			json = nlohmann::json::parse(jsonString);
+		} catch (const std::exception& ex) {
+			std::cout << ex.what() << std::endl;
+		} catch (const std::string& ex) {
+			std::cout << ex << std::endl;
+		};
+		std::cout << "Loading level file...Done\n";
 		file.close();
 		if (json.contains("angleData")) {
 			json.at("angleData").get_to(angleData);

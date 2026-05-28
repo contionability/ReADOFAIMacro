@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <Level.h>
 #include <PlayScript.h>
 
@@ -52,39 +53,34 @@ namespace ReADOFAIMacro {
 	}
 	void processTwirl(const Level& level, std::vector<double>& rotationAngles) {
 		const size_t size = level.getTwirlRanges().size();
-		for (int index = 0; index < size; index++) {
-			const auto& range = level.getTwirlRanges().at(index);
-			range.forEach([level, &rotationAngles](const size_t floor) {
-				double& theta = rotationAngles.at(floor);
-				if (theta != 360 && !level.isMidSpin(floor+1)) {
+		for (const auto& r : level.getTwirlRanges()) {
+			r.forEach([&level, &rotationAngles](const size_t floor) {
+				double& theta = rotationAngles[floor];
+				if (theta != 360 && !level.isMidSpin(floor + 1)) {
 					theta = 360 - theta;
 				}
 			});
 		}
 	}
 	void processPause(const Level& level, std::vector<double>& rotationAngles) {
-		const size_t size = level.getPauses().size();
-		for (int index = 0; index < size; index++) {
-			const auto& pair = level.getPauses().at(index);
-			size_t floor = pair.first;
-			if (level.isMidSpin(floor+1)) {
+		for (const auto& pair : level.getPauses()) {
+			const size_t floor = pair.first;
+			if (level.isMidSpin(floor + 1)) {
 				continue;
 			}
-			rotationAngles.at(floor) += pair.second * 180;
+			rotationAngles[floor] += pair.second * 180;
 		}
 	}
 	void processSetSpeed(const Level& level, std::vector<double>& rotationAngles, double baseBpm) {
-		const size_t size = level.getSpeedList().size();
 		const double levelBpm = level.getSetting<double>("bpm");
 		const double globalMultiplier = baseBpm / levelBpm;
 
-		for (int index = 0; index < size; index++) {
-			const auto& pair = level.getSpeedList().at(index);
+		for (const auto& pair : level.getSpeedList()) {
 			const Range& range = pair.first;
-			range.forEach([level, &rotationAngles, &pair, levelBpm, globalMultiplier](const size_t floor) {
-				if (level.isMidSpin(floor+1)) return;
-				const double multiplier = pair.second.first / levelBpm / globalMultiplier;
-				rotationAngles.at(floor) /= multiplier;
+			const double multiplier = pair.second.first / levelBpm / globalMultiplier;
+			range.forEach([&level, &rotationAngles, multiplier](const size_t floor) {
+				if (level.isMidSpin(floor + 1)) return;
+				rotationAngles[floor] /= multiplier;
 			});
 		}
 	}
@@ -107,12 +103,14 @@ namespace ReADOFAIMacro {
 	}
 
 	void removeMidSpin(const Level& level, std::vector<double>& rotationAngles) {
-		const size_t size = rotationAngles.size();
-		for (size_t i = size; i > 0; i--) {
-			if (level.isMidSpin(i)) {
-				rotationAngles.erase(rotationAngles.begin()+i-1);
-			}
-		}
+		size_t index = 1;
+		rotationAngles.erase(
+			std::remove_if(rotationAngles.begin(), rotationAngles.end(),
+				[&level, &index](const double&) {
+					return level.isMidSpin(index++);
+				}),
+			rotationAngles.end()
+		);
 	}
 
 	void sort(std::vector<InputEvent>& events, std::vector<uint_fast64_t>& timeStamps) {

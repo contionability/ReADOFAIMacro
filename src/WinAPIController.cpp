@@ -116,7 +116,7 @@ namespace ReADOFAIMacro {
 		running = true;
 		threads.emplace_back([this, inputs, timeStamps] { pressKeys(inputs, timeStamps); });
 		while (!isMouseAtZero()) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		}
 		stop();
 	}
@@ -134,9 +134,10 @@ namespace ReADOFAIMacro {
 	void WinAPIController::pressKeys(const std::vector<INPUT>& inputs, const std::vector<uint_fast64_t>& timeStamps) const {
 		size_t i = 0;
 		while (running.load()) {
-			while (running.load() && getTimestampMs() < timeStamps[i]) {
-			}
-			SendInput(1, const_cast<LPINPUT>(&inputs[i]), sizeof(INPUT));
+			while (running.load() && getTimestampMs() < timeStamps[i]) {}
+			std::cout << i << " " << timeStamps[i] << "\n";
+			if (i != 0)
+				SendInput(1, const_cast<LPINPUT>(&inputs[i]), sizeof(INPUT));
 			i++;
 		}
 	}
